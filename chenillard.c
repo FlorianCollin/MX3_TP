@@ -28,13 +28,22 @@
 // the wait function
 void wait(int l) {
     for (int i=0; i<l; i++) {
-    // verfication du button
     }
 }
 
 int b8_state() {
-    if ((PORTBbits.RB8) == 0) return 0;
-    return 1; // button high
+    
+    static int current_state = 0;
+    
+    if ((PORTB & MASK_BUTTON) == 1) {
+        if (current_state == 1) {
+            current_state = 0;
+        } else {
+            current_state = 1;
+        }
+    }
+    
+    return current_state; // button high
 }
 
 // Do I really need to precise that this is the main function ???
@@ -138,10 +147,13 @@ void main() {
     TRISA = 0x00;
     TRISF = TRISF | MASK_SW0;
     TRISB = TRISB | MASK_BUTTON; // input
+    ANSELBbits.ANSB8 = 0;
     int time_to_wait_0 = 500000;
     int time_to_wait_1 = 50000;
     int current_time_to_wait = time_to_wait_0;
     int direction = 1;
+    int button_state = 0;
+    int tmp = 0;
 
     
 // loop
@@ -155,11 +167,21 @@ void main() {
         }
 
         wait(current_time_to_wait);          // just wait !
+        
 
-        if (!b8_state) direction = -1;
-        direction = 1;
+        
+        button_state = (PORTB & MASK_BUTTON);
+   
+        if (button_state) { //(PORTB & MASK_BUTTON) == 0
+            fsm = fsm - 1;
+            if (fsm < 0) fsm = 7;
+        }
+        else {
+            fsm = fsm + 1;
+            if (fsm > 7) fsm = 0;
+        }
 
-        fsm = (fsm+direction)%7;     // next animation step
+        
         
         switch (fsm) {
             case 0 :
