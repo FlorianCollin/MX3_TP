@@ -31,17 +31,10 @@ void wait(int l) {
     }
 }
 
-int b8_state() {
+int b8_state(int button_state) {
+    int tmp = 0;
     
-    static int current_state = 0;
-    
-    if ((PORTB & MASK_BUTTON) == 1) {
-        if (current_state == 1) {
-            current_state = 0;
-        } else {
-            current_state = 1;
-        }
-    }
+    // a finir
     
     return current_state; // button high
 }
@@ -169,8 +162,11 @@ void main() {
         wait(current_time_to_wait);          // just wait !
         
 
-        
-        button_state = (PORTB & MASK_BUTTON);
+         
+        if (tmp = (PORTB & MASK_BUTTON)) {
+            if (button_state == 1) button_state=0;
+            else button_state = 1;
+        } // pour ne pas avoir a rester appuier
    
         if (button_state) { //(PORTB & MASK_BUTTON) == 0
             fsm = fsm - 1;
