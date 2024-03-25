@@ -22,13 +22,17 @@
 // SW0 (FOR DEBUG)
 #define MASK_SW0 (1 << 3)
 
-// CONFIG TIMER 2
+// CONFIG TIMER 2/3
 #define MASK_CON_ON (1 << 15)
 #define MASK_CON_TGATE_OFF (1 << 7)
 #define MASK_CON_TCS (1 << 1) // TSC = 0 (internal clock)
-#define MASK_CON_PRES 0
-#define PERIODE 453
+#define MASK_CON_PRES_TIMER_2 0
+#define MASK_CON_PRES_TIMER_3  (1<<6) | (1<<5) | (1<<4)
+#define PERIODE_TIMER2 453
+#define PERIODE_TIMER3 39062
 #define MASK_IFS0_TIMER2 (1 << (2*5 - 1))
+#define MASK_IFS0_TIMER3 (1 << (3*5 - 1))
+
 
 // CONFIG OC1
 #define MASK_OC_ON (1<<15)       // module ON (1)
@@ -44,7 +48,12 @@
 #define FS_AUDIO 22050
 
 /////////////////////// VARIABLE GLOABLE ////////////////////////
-int state = 0;
+// STATE FSM :
+// 0 : Init / On ne fais rien, on attent l'appuie sur le boutton btnc
+// 1 : On fais la commande de l'écture de la mémoire flash on passe directement à 2
+// 2 : On joue la musique et on incrémente le compteur 1Hz de l'écran LCD
+// 3 : On est en pausse on attend btnc
+char state = 0;
 ///////////////////////////////////////////////////////////
 
 ///////////// SET FUNCTION /////////////////
@@ -55,7 +64,7 @@ void set_OC1CON() {
     OC1CON |=  MASK_OC_MODE; // 6
 
     OC1R = 0;
-    OC1RS = PERIODE/2;
+    OC1RS = PERIODE_TIMER2/2;
 
     // redirection OC1 to RB14
 
@@ -97,9 +106,20 @@ void set_timer2() {
     T2CON |= MASK_CON_ON; // module ON (1)
     T2CON &= ~MASK_CON_TCS; // Internal clock used (0)
     T2CON &= ~MASK_CON_TGATE_OFF; // Gate timer off (0)
-    T2CON |= MASK_CON_PRES; // prescale 1:
+    T2CON |= MASK_CON_PRES_TIMER_2; // prescale 1:
     
-    PR2 = PERIODE;
+    PR2 = PERIODE_TIMER2;
+}
+
+/// TIMER 3 ///
+
+void set_timer3() {
+    T3CON |= MASK_CON_ON; // module ON (1)
+    T3CON &= ~MASK_CON_TCS; // Internal clock used (0)
+    T3CON &= ~MASK_CON_TGATE_OFF; // Gate timer off (0)
+    T3CON |= MASK_CON_PRES_TIMER_3; // prescale 1:
+    
+    PR3 = PERIODE_TIMER3;
 }
 
 void set_interrupt() {
@@ -114,6 +134,7 @@ void set_btnc() {
 
 int is_btnc() {
     if ((PORTF & MASK_BTNC) == 0) {
+        
         return 0;
     }
     return 1;
@@ -259,6 +280,7 @@ void main() {
     ////////////////////////////
     set_btnc();
     set_timer2();
+    set_timer3();
     set_audio_output();
     set_OC1CON();
     
@@ -286,21 +308,59 @@ void main() {
     int count_max = (LAST_AD - START_AD);
     
     // int state = 0; DEFINI EN VARIABLE GLOBAL
+    int current_time = 0;
+    int current_real_time = 0;
+    int last_time_btnc = 0;
     int tmp = 1;
     while(count < count_max) {
+
         if (tmp == 1) {
             data = flash_read_to_current_position();
-            data = (data+128)*PERIODE/256;
+            data = (data+128)*PERIODE_TIMER2/256;
             tmp = 0;
         }
-        if (IFS0 & MASK_IFS0_TIMER2) {
+
+        if ((IFS0 & MASK_IFS0_TIMER2) && state == 1) {
             IFS0 &= ~MASK_IFS0_TIMER2; // remise à zéro du flag
-            
             set_OC1RS(data);
             count++;  
             tmp = 1;
         }
-   
+
+        if (is_btnc()) {
+            //if ((current_real_time - last_time_btnc) < 2){ // On doit avoir au moins 2 seconde qui sépare deux appuie de bouton
+                //last_time_btnc = current_real_time;
+                if (state == 0) {
+                    state = 1;
+                } else if (state == 2) {
+                    state = 3;
+                } else if (state == 3) {
+                    state == 0;
+                    current_time = 0;
+                }
+            //}
+                
+        }
+
+        if (state == 1) {
+            // On redémare à zéro
+            flash_read_end(); // SS 1
+            flash_read_init();
+            state = 2;
+            count = 0;
+        } else if (state == 0) {
+           
+        }
+
+        if ((IFS0 & MASK_IFS0_TIMER3)){
+            current_real_time++;
+            if (state == 2) {
+                current_time++;
+            }
+            LCD_Clear();
+            LCD_Write_HEX(current_time);
+        }
+       
     
     }
     flash_read_end();
